@@ -14,6 +14,7 @@ Semantic search in Uzbek · Russian · English  ·  voice input  ·  market-medi
 ![Tests](https://img.shields.io/badge/tests-1376%20offline-2ea44f)
 ![Latency](https://img.shields.io/badge/search-p50%20~950ms-blue)
 ![Dependencies](https://img.shields.io/badge/web%20framework-none-lightgrey)
+[![License](https://img.shields.io/badge/license-MIT-yellow)](LICENSE)
 
 **[🇺🇿 O'zbekcha](README.uz.md)** · [Architecture](#architecture) · [Live bot](https://t.me/xalyavauz_bot)
 
@@ -297,6 +298,7 @@ All configuration goes through `.env` — see [`.env.example`](.env.example).
 | [README.uz.md](README.uz.md) | Full Uzbek version of this page |
 | [ARCHITECTURE.md](ARCHITECTURE.md) | Deep dive (Uzbek): every file, the five normalisation layers, where STT plugs in, honest "where is the ML?" answer, and the traps behind each design choice |
 | [SECURITY.md](SECURITY.md) | Secret policy, key rotation, third-party data flows |
+| [LICENSE](LICENSE) | MIT — free to use, modify and distribute with attribution |
 
 ---
 

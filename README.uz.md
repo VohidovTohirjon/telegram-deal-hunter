@@ -13,6 +13,7 @@ har bir topilmaga bir qarashda tushunarli baho beradi.
 ![Testlar](https://img.shields.io/badge/testlar-1376%20oflayn-2ea44f)
 ![Framework](https://img.shields.io/badge/web%20framework-yo%27q-lightgrey)
 ![Til](https://img.shields.io/badge/interfeys-o%27zbekcha-1EB53A)
+[![Litsenziya](https://img.shields.io/badge/litsenziya-MIT-yellow)](LICENSE)
 
 **[🇬🇧 English version](README.md)**
 
@@ -351,6 +352,7 @@ Telegram bu chaqiruvlarni cheklaydi.
 | [ARCHITECTURE.md](ARCHITECTURE.md) | Chuqur qo'llanma: har fayl, normalizatsiya qatlamlari, STT ulanishi, «ML qayerda?», tuzoqlar |
 | [SECURITY.md](SECURITY.md) | Sirlar siyosati, kalit almashtirish, tashqi xizmatlar |
 | [`.env.example`](.env.example) | Barcha sozlamalar izohlari bilan |
+| [LICENSE](LICENSE) | MIT — muallif ko'rsatilgan holda erkin ishlatish mumkin |
 
 ---
 
