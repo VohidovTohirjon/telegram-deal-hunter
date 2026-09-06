@@ -193,15 +193,15 @@ Python, SQLite va `curl_cffi`. Ikkita mustaqil oqim bir bazani baham ko'radi.
 ```mermaid
 flowchart LR
     U([👤 Odam]) -->|matn / ovoz| TG[Telegram API]
-    TG --> BOTD["<b>botd.py</b><br/>demon, tugmalar,<br/>takror bosish himoyasi"]
-    BOTD -.ovoz.-> STT["<b>stt.py</b><br/>ovoz → matn<br/>ElevenLabs / Vosk"]
+    TG --> BOTD["botd.py<br/>demon, tugmalar,<br/>takror bosish himoyasi"]
+    BOTD -. ovoz .-> STT["stt.py<br/>ovoz → matn<br/>ElevenLabs / Vosk"]
     STT --> INT
-    BOTD --> INT["<b>intent.py</b><br/>niyat: so'rov + byudjet<br/>+ holat + tartib"]
-    INT --> SEM["<b>semantic.py</b><br/>ma'no qatlami:<br/>sinonim, imlo, kirill"]
-    SEM --> SR["<b>search.py</b><br/>3 bosqichli qidiruv"]
+    BOTD --> INT["intent.py<br/>niyat: so'rov + byudjet<br/>+ holat + tartib"]
+    INT --> SEM["semantic.py<br/>ma'no qatlami:<br/>sinonim, imlo, kirill"]
+    SEM --> SR["search.py<br/>3 bosqichli qidiruv"]
     SR --> SRC[("OLX · Uzum<br/>Asaxiy")]
-    SRC --> DL["<b>deals.py</b><br/>narx bahosi"]
-    DL --> UI["<b>ui.py</b><br/>kartochka, menyu"]
+    SRC --> DL["deals.py<br/>narx bahosi"]
+    DL --> UI["ui.py<br/>kartochka, menyu"]
     UI --> TG
 ```
 
@@ -209,9 +209,9 @@ flowchart LR
 
 ```mermaid
 flowchart LR
-    T1(["⏰ 11:00 / 16:00 / 21:00"]) --> M["<b>main.py</b><br/>digest quvuri:<br/>butun bo'limni skanerlash"]
-    T2(["🔁 har 15 daqiqa"]) --> W["<b>watch.py</b><br/>kuzatuvlar:<br/>narx tushdimi?"]
-    M --> DB[("<b>db.py</b><br/>SQLite: narx tarixi,<br/>kuzatuvlar, kesh")]
+    T1(["⏰ 11:00 / 16:00 / 21:00"]) --> M["main.py<br/>digest quvuri:<br/>butun bo'limni skanerlash"]
+    T2(["🔁 har 15 daqiqa"]) --> W["watch.py<br/>kuzatuvlar:<br/>narx tushdimi?"]
+    M --> DB[("db.py<br/>SQLite: narx tarixi,<br/>kuzatuvlar, kesh")]
     W --> DB
     DB --> TOP["🔥 /top ro'yxati"]
     W --> N["🔔 shaxsiy xabarnoma"]
