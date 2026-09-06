@@ -1,0 +1,54 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <defs>
+    <!-- Chuqur siyoh fon: Telegram ro'yxatida ham, profilda ham ajralib turadi -->
+    <radialGradient id="bg" cx="36%" cy="24%" r="86%">
+      <stop offset="0%"   stop-color="#2C2540"/>
+      <stop offset="52%"  stop-color="#171426"/>
+      <stop offset="100%" stop-color="#0B0912"/>
+    </radialGradient>
+    <!-- Amber: "arzon topilma". Telegramning ko'k interfeysida eng kuchli kontrast -->
+    <linearGradient id="tag" x1="10%" y1="6%" x2="86%" y2="98%">
+      <stop offset="0%"   stop-color="#FFD867"/>
+      <stop offset="46%"  stop-color="#FFB01F"/>
+      <stop offset="100%" stop-color="#F07C06"/>
+    </linearGradient>
+    <filter id="soft" x="-30%" y="-30%" width="160%" height="160%">
+      <feDropShadow dx="0" dy="12" stdDeviation="18" flood-color="#000" flood-opacity="0.5"/>
+    </filter>
+  </defs>
+
+  <rect width="512" height="512" fill="url(#bg)"/>
+
+  <!--
+    Narx yorlig'i + pastga strelka.
+    Telegram avatarni DOIRA qilib kesadi, shuning uchun butun belgi
+    markazdagi r=212 doira ichida turadi. 40px da ham strelka o'qiladi:
+    mayda tafsilot (ip teshigi) ataylab yo'q.
+  -->
+  <g transform="translate(256 262) rotate(-11)" filter="url(#soft)">
+    <path d="M -196 0
+             L -104 -108
+             L 112 -108
+             A 52 52 0 0 1 164 -56
+             L 164 56
+             A 52 52 0 0 1 112 108
+             L -104 108
+             Z"
+          fill="url(#tag)"
+          stroke="#0B0912" stroke-width="12" stroke-linejoin="round"/>
+
+    <!-- Narx tushishi: yorliqdan o'yib olingan qalin strelka -->
+    <path d="M -6 -70
+             L 60 -70
+             L 60 -4
+             L 112 -4
+             L 27 82
+             L -58 -4
+             L -6 -4
+             Z"
+          fill="#0B0912"/>
+
+    <!-- Ip teshigi — uchga yaqin, kichik lekin toza -->
+    <circle cx="-118" cy="0" r="22" fill="#0B0912"/>
+  </g>
+</svg>

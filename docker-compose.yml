@@ -1,0 +1,23 @@
+services:
+  bot:
+    build: .
+    image: xalyava-bot:latest
+    container_name: xalyava-bot
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      DATA_DIR: /data
+      DB_PATH: /data/xalyava.db
+      TZ: Asia/Tashkent
+    volumes:
+      - xalyava-data:/data
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+    # Xotira cheklovi: Vosk modeli ~150MB, qolgani quvurlar uchun
+    mem_limit: 900m
+
+volumes:
+  xalyava-data:
