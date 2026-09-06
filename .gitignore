@@ -1,0 +1,29 @@
+# ─── Sirlar — hech qachon commit qilinmasin ──────────────────────────────
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+
+# ─── Ish paytida yaratiladigan ma'lumot ──────────────────────────────────
+# SQLite bazalar, kesh, Vosk modeli, ovoz vaqtinchalik fayllari
+data/
+logs/
+*.db
+*.db-shm
+*.db-wal
+*.log
+
+# ─── Python ──────────────────────────────────────────────────────────────
+venv/
+__pycache__/
+*.pyc
+
+# ─── Benchmark artefaktlari (og'ir audio va shaxsiy yozuvlar) ────────────
+bench/audio/
+bench/results.json
+bench/manifest.json
+
+# ─── Mahalliy ish qaydlari va OS axlati ─────────────────────────────────
+DAVOM.md
+.DS_Store

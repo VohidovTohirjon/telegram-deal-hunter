@@ -1,0 +1,21 @@
+{
+  "chat_id": null,
+  "top_n": 5,
+  "send_hours": [
+    11,
+    16,
+    21
+  ],
+  "city_id": 4,
+  "city_name": "Toshkent",
+  "olx_categories": [
+    37
+  ],
+  "fresh_hours": 72,
+  "min_price_uzs": 200000,
+  "min_discount_pct": 25,
+  "max_discount_pct": 60,
+  "max_lookups_per_run": 120,
+  "request_delay_sec": 1.0,
+  "price_band_pct": 35
+}

@@ -1,0 +1,4 @@
+-r requirements.txt
+# Faqat benchmark va tadqiqot uchun (Docker образiga kirmaydi — og'ir)
+faster-whisper>=1.2
+edge-tts>=7.0
