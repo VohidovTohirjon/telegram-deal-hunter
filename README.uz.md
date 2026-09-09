@@ -211,7 +211,7 @@ flowchart LR
 | `run.py` | Yagona kirish nuqtasi: demon + digest jadvali + kuzatuv sikli |
 | `botd.py` | Telegram demoni: buyruqlar, tugmalar, callback'lar, guruh qoidalari |
 | `main.py` | Digest quvuri (CLI: `--dry-run`, `--get-chat-id`) |
-| `xalyava/semantic.py` | **Ma'no qatlami**: ~150 tushuncha (uz/ru/en), brend aliaslari, imlo tuzatish, kirill, ziddiyatlar |
+| `xalyava/semantic.py` | **Ma'no qatlami**: 147 tushuncha (uz/ru/en), brend aliaslari, imlo tuzatish, kirill, ziddiyatlar |
 | `xalyava/intent.py` | Tabiiy so'rov → tuzilgan `SearchIntent` (byudjet, holat, tartib) |
 | `xalyava/search.py` | Qidiruv dvigateli: variantlar, 3 bosqich, relevantlik filtri |
 | `xalyava/deals.py` | Narx bahosi, etalon tanlash, soxta chegirma detektori, dedupe |

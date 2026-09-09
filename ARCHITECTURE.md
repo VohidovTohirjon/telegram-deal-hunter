@@ -63,7 +63,7 @@ Pastdan yuqoriga (`tg.py` hech kimga bog'liq emas, `botd.py` hammasiga bog'liq):
 | `match.py` | **Tokenizatsiya va mahsulot moslashtirish.** Translit, shovqin so'zlar, aksessuar filtri, `match_score()`. | — |
 | `analyze.py` | Matn tahlili: kredit/kopiya/nosoz/telefon/sanoat/gadjet detektorlari, tarjima va translit. | — |
 | `sources.py` | Tashqi mijozlar: OLX API, Uzum GraphQL, Asaxiy HTML. | `perf` |
-| `semantic.py` | **Semantik qatlam.** ~150 tushuncha (uz/ru/en/jargon), brend aliaslar, imlo tuzatish, kirill→lotin, ierarxiya (iphone ⊂ telefon), ziddiyat (kolonka ≠ gaz kolonka), variantlar (uz↔ru). Tarmoqsiz, deterministik. | `match` |
+| `semantic.py` | **Semantik qatlam.** 147 tushuncha (uz/ru/en/jargon), brend aliaslar, imlo tuzatish, kirill→lotin, ierarxiya (iphone ⊂ telefon), ziddiyat (kolonka ≠ gaz kolonka), variantlar (uz↔ru). Tarmoqsiz, deterministik. | `match` |
 | `intent.py` | Erkin matn → `SearchIntent` (narx chegarasi, «eng arzon», «skidka»…). Boshida **tushunish qatlami**: `stt.normalize_transcript` + `semantic.normalize` — matn ham, ovoz ham. | `search`, `semantic`, `stt` |
 | `search.py` | **Qidiruv dvigateli.** 3 bosqichli qidiruv, relevantlik qoidalari, fokus filtri. | `match`, `analyze`, `sources`, `deals` |
 | `deals.py` | **Deal Intelligence.** Narx bahosi, peer median, soxta chegirma detektori, dedupe. | `match`, `analyze`, `db` |
