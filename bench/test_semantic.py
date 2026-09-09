@@ -18,6 +18,10 @@ sys.path.insert(0, ROOT)
 
 os.environ["DB_PATH"] = os.path.join(tempfile.mkdtemp(), "s.db")
 os.environ.setdefault("TELEGRAM_TOKEN", "test:token")
+# ML qatlamlari alohida to'plamda sinaladi (bench/test_ml.py) — bu yerda
+# qoidaviy yo'l tekshiriladi, shuning uchun o'chirib qo'yiladi.
+os.environ["PRICE_MODEL_ENABLED"] = "0"
+os.environ["EMBED_ENABLED"] = "0"
 logging.disable(logging.ERROR)
 
 from xalyava import db, intent as I, search as S, semantic as SM, stt, ui, watch  # noqa: E402

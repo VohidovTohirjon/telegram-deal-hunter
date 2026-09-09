@@ -391,6 +391,9 @@ def _short_reason(a):
     if d >= 5:
         if a.baseline_kind in ("bozor", "tarix"):
             return f"bozordan ~{round(d)}% past"
+        if a.baseline_kind == "model":
+            # etalon — o'rgatilgan model bashorati, shuning uchun "taxminiy"
+            return f"taxminiy narxdan ~{round(d)}% past"
         return f"yangisidan ~{round(d)}% arzon"
     if d <= -8:
         return "bozordan qimmatroq"
@@ -707,6 +710,22 @@ def error_card(query=""):
             {"inline_keyboard": [
                 [{"text": "🔄 Qayta urinish", "callback_data": f"rq:{ctx}"}],
                 [{"text": "🏠 Boshiga", "callback_data": "h:start"}]]})
+
+
+def voice_confirm(text, ctx_id):
+    """Model o'zini ishonchsiz his qilganda — taxmin qilmay, so'raymiz.
+
+    Akustik model har so'zga ishonch bahosini beradi; u past bo'lsa noto'g'ri
+    so'rov bilan qidirgandan ko'ra tasdiqlatib olish halolroq.
+    """
+    body = ("🎙 <b>Aniq eshitmadim.</b>\n\n"
+            f"Shunday tushundim: <i>«{esc(text[:150])}»</i>\n\n"
+            "Shuni qidiraymi?")
+    kb = {"inline_keyboard": [
+        [{"text": "🔎 Ha, qidir", "callback_data": f"vq:{ctx_id}"}],
+        [{"text": "🎤 Qayta aytaman", "callback_data": "h:voice"},
+         {"text": "⌨️ Yozib yuboraman", "callback_data": "g:search"}]]}
+    return body, kb
 
 
 def voice_note(text):

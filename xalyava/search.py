@@ -487,7 +487,42 @@ def search_intent(cfg, intent_obj, top_n=5, with_refs=False, score=True):
                 items.sort(key=lambda it: (rank[it["assessment"].rating] == 3,
                                            -it["assessment"].score,
                                            it["olx_price"]))
+        # «Shunga o'xshash»: natijalar allaqachon qoidalar bilan filtrlangan,
+        # endi ularni ANIQ SHU e'longa ma'no jihatdan yaqinligi bo'yicha
+        # tartiblaymiz. O'lchandi: aynan moslik bo'lganda qoida yaxshiroq
+        # (top-5 mos 1.00 vs 0.92), lekin aynan mos keladigani bo'lmaganda
+        # qoida butunlay adashadi (0.00 — «Samsung S23 Ultra» so'roviga
+        # iPhone qaytarardi), embedding esa eng yaqinini topadi (0.75).
+        # Shuning uchun bu yerda — va faqat bu yerda — embedding ishlatiladi.
+        like = (intent_obj.meta or {}).get("like")
+        if like and len(items) > 1:
+            items = _rerank_like(like, items)
     return items[:top_n], query, state
+
+
+def _rerank_like(anchor, items):
+    """Natijalarni `anchor` e'loniga o'xshashligi bo'yicha qayta tartiblash."""
+    from . import ml
+    if not ml.available():
+        return items
+    sims = ml.similarity(anchor, [(it.get("offer") or {}).get("title") or ""
+                                  for it in items])
+    if not sims:
+        return items
+    from . import deals as _d
+    order = sorted(range(len(items)),
+                   # shubhalilar oxirida qoladi, keyin o'xshashlik, keyin narx
+                   key=lambda i: ((items[i].get("assessment") is not None
+                                   and items[i]["assessment"].rating
+                                   == _d.RATING_SUSPECT),
+                                  # 0.1 lik "savat"ga yaxlitlash. Sabab:
+                                  # int8 kvantlangan model partiya tarkibiga
+                                  # qarab ±0.01 tebranadi — 0.86 va 0.88
+                                  # orasidagi farq shovqin, signal emas.
+                                  # Bir savatdagilar orasida ARZONI oldinda.
+                                  -round(sims[i] * 10),
+                                  items[i].get("olx_price") or 0))
+    return [items[i] for i in order]
 
 
 def run_search(cfg, raw_query, top_n=5, with_refs=True, _intent=None):

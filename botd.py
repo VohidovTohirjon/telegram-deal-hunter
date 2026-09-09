@@ -492,7 +492,11 @@ def _handle_voice_inner(chat_id, user_id, msg_id, replied, voice, reply_to):
     r = tg.reply(TOKEN, chat_id, "🎧 Eshitilyapti…", reply_to=reply_to)
     progress_id = ((r or {}).get("result") or {}).get("message_id")
     try:
-        text = (stt.transcribe(dest) or "").strip()
+        # Ba'zi dvigatellar (va eski moslamalar) ishonch bermaydi — shunda
+        # oddiy matn qaytadi va tasdiq bosqichi o'zi o'chadi.
+        _res = stt.transcribe(dest, with_confidence=True)
+        text, voice_conf = _res if isinstance(_res, tuple) else (_res, None)
+        text = (text or "").strip()
     except Exception:
         log.exception("STT xato")
         tg.delete_message(TOKEN, chat_id, progress_id)
@@ -534,6 +538,18 @@ def _handle_voice_inner(chat_id, user_id, msg_id, replied, voice, reply_to):
         # guruhda buningsiz javob o'lik yo'l bo'lib qolardi
         set_await(chat_id, user_id, "search")
         return
+    # Akustik model o'zi "ishonchim past" desa — taxmin qilib qidirmaymiz.
+    # Bu modelning ichki signalini UX'ga chiqarish: noto'g'ri natija berish
+    # o'rniga bitta savol berish.
+    if (voice_conf is not None
+            and voice_conf < settings.stt_confirm_below):
+        db.log_event("voice_lowconf", user_id, conf=round(voice_conf, 2))
+        tg.delete_message(TOKEN, chat_id, progress_id)
+        cid = db.put_ctx({"q": text, "conf": round(voice_conf, 3)})
+        body, kb = ui.voice_confirm(text, cid)
+        tg.reply(TOKEN, chat_id, body, reply_to=reply_to, keyboard=kb)
+        return
+
     # Bot nimani eshitganini foydalanuvchi ko'rishi shart — aks holda
     # noto'g'ri natijaning sababi tushunarsiz bo'ladi. "Eshitilyapti"
     # xabari qidiruv jarayoniga, so'ng natijaga aylanadi (yangi xabar yo'q).
@@ -618,7 +634,7 @@ def handle_callback(cq):
     #     uzaymaydigan oyna — faqat tasodifiy "ikki tegish" yutiladi,
     #     "Orqaga → Kuzatish → Orqaga" kabi ataylab navigatsiya ishlayveradi
     #     (takrori zararsiz: bir xil tahrir).
-    heavy = action in ("g", "ex", "rq", "sim", "wq", "wk", "d", "l")
+    heavy = action in ("g", "ex", "rq", "sim", "wq", "wk", "d", "l", "vq")
     key = f"cb:{data}" if heavy else f"cb:{msg_id}:{data}"
     if not claim_action(chat_id, user_id, key,
                         window=DEDUPE_WINDOW if heavy else DEDUPE_TOGGLE,
@@ -923,6 +939,20 @@ def _dispatch(action, parts, chat_id, user_id, msg_id, private,
         done("watch_delete")
         return
 
+    # --- ovoz transkriptini tasdiqlash (model ishonchi past bo'lgan holat)
+    if action == "vq" and len(parts) > 1:
+        ctx = db.get_ctx(parts[1]) or {}
+        q = (ctx.get("q") or "").strip()
+        if not q:
+            expired()
+            return
+        db.log_event("voice_confirmed", user_id)
+        io = apply_prefs(intent_mod.parse(q, source="voice"),
+                         db.get_prefs(user_id))
+        run_search_flow(chat_id, user_id, io, note=ui.voice_note(q), notify=ack)
+        done("voice_confirm")
+        return
+
     # --- o'xshash mahsulotlar (ataylab YANGI qidiruv)
     if action == "sim" and len(parts) > 2:
         sess = session(parts[1])
@@ -945,6 +975,9 @@ def _dispatch(action, parts, chat_id, user_id, msg_id, private,
         from xalyava import match as _m
         io = apply_prefs(intent_mod.parse(_m.search_query(base), source="button"),
                          db.get_prefs(user_id))
+        # embedding qatlami natijalarni AYNAN shu e'longa yaqinligi bo'yicha
+        # tartiblaydi (xalyava/search.py::_rerank_like)
+        io.meta = dict(io.meta or {}, like=base)
         run_search_flow(chat_id, user_id, io, exclude_id=row.get("id"),
                         reply_to=None if private else msg_id, notify=ack)
         done("similar")
@@ -1384,7 +1417,18 @@ def handle_command(cmd, text, msg, chat_id, user_id, is_private, rt, msg_id):
             tg.reply(TOKEN, chat_id, "🔒 Bu buyruq faqat adminlar uchun.",
                      reply_to=rt)
             return
-        tg.reply(TOKEN, chat_id, f"<code>{ui.esc(db.stats())}</code>",
+        from xalyava import ml, price_model
+        pm, em = price_model.info(), ml.stats()
+        extra = "\n\n🧠 <b>Narx modeli</b>: "
+        if pm.get("available"):
+            extra += ("%d e'lon · %d belgi · MdAPE %.0f%% · %.0f soat oldin"
+                      % (pm.get("rows", 0), pm.get("features", 0),
+                         100 * pm.get("mdape_train", 0), pm.get("age_hours", 0)))
+        else:
+            extra += "o'chiq"
+        extra += "\n🔤 <b>Embedding</b>: " + ("tayyor (%d kesh)" % em["cached"]
+                                              if em["available"] else "o'chiq")
+        tg.reply(TOKEN, chat_id, f"<code>{ui.esc(db.stats())}</code>" + extra,
                  reply_to=rt)
     else:
         # Noma'lum buyruq — jimlik "bot o'lgan" degan taassurot qoldiradi
@@ -1618,6 +1662,16 @@ def housekeeping_loop():
             log.info("Eski yozuvlar tozalandi")
         except Exception:
             log.exception("tozalashda xato")
+        try:
+            # Narx modeli o'z ma'lumotimizda qayta o'rgatiladi: baza o'sgani
+            # sayin bashorat aniqlashadi. Sekundlar ichida bajariladi.
+            from xalyava import price_model
+            res = price_model.maybe_retrain(settings.price_model_max_age_h)
+            if res and res.get("ok"):
+                log.info("Narx modeli yangilandi: %d e'lon, MdAPE %.0f%%",
+                         res["rows"], 100 * res["mdape_train"])
+        except Exception:
+            log.exception("narx modelini o'rgatishda xato")
         time.sleep(6 * 3600)
 
 
@@ -1714,6 +1768,18 @@ def _register_commands():
                  len(settings.admin_ids))
 
 
+def _preload_ml():
+    """Narx modeli va embedding qatlamini fonda tayyorlash."""
+    try:
+        from xalyava import ml, price_model
+        price_model.maybe_retrain(settings.price_model_max_age_h)
+        if price_model.available():
+            log.info("Narx modeli: %s", price_model.info())
+        ml.preload()
+    except Exception:
+        log.exception("ML qatlamini tayyorlashda xato")
+
+
 def _preload_stt():
     try:
         from xalyava import stt
@@ -1778,6 +1844,7 @@ def main():
     log.info("botd ishga tushdi (offset=%s) %s", offset, settings)
     threading.Thread(target=_register_commands, daemon=True).start()
     threading.Thread(target=_preload_stt, daemon=True).start()
+    threading.Thread(target=_preload_ml, daemon=True).start()
     threading.Thread(target=_watchdog, daemon=True).start()
     threading.Thread(target=watch_loop, daemon=True).start()
     threading.Thread(target=housekeeping_loop, daemon=True).start()

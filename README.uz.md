@@ -10,7 +10,7 @@ har bir topilmaga bir qarashda tushunarli baho beradi.
 
 [![Python](https://img.shields.io/badge/Python-3.11%2B-3776AB?logo=python&logoColor=white)](https://www.python.org/)
 [![Telegram](https://img.shields.io/badge/Telegram-%40xalyavauz__bot-26A5E4?logo=telegram&logoColor=white)](https://t.me/xalyavauz_bot)
-![Testlar](https://img.shields.io/badge/testlar-1376%20oflayn-2ea44f)
+![Testlar](https://img.shields.io/badge/testlar-1459%20oflayn-2ea44f)
 ![Framework](https://img.shields.io/badge/web%20framework-yo%27q-lightgrey)
 ![Til](https://img.shields.io/badge/interfeys-o%27zbekcha-1EB53A)
 [![Litsenziya](https://img.shields.io/badge/litsenziya-MIT-yellow)](LICENSE)
@@ -25,7 +25,7 @@ har bir topilmaga bir qarashda tushunarli baho beradi.
 
 Odam **oddiy tilda yozadi yoki gapiradi** — bot ma'noni tushunadi, e'lonlarni
 topadi, narxini bozor bilan solishtiradi va **«bu arzonmi yoki yo'q»** degan
-savolga javob beradi. Hammasi ~1 soniyada, o'zbek tilida.
+savolga javob beradi. Hammasi bir necha soniyada, o'zbek tilida.
 
 > [!TIP]
 > **Loyihani birinchi marta ochyapsizmi?** Quyidagi [Arxitektura](#arxitektura)
@@ -90,6 +90,7 @@ iPhone 15 Pro 256GB
 | 🕵️ | **Tuzoqlarni ajratadi.** Bo'lib to'lash/kredit e'lonlari («Bosh to'lov: 310$»), kopiya, nosoz, zapchast, ulgurji — arzon deal deb ko'rsatilmaydi |
 | ❤️ | **Kuzatadi.** «15 mln dan past bo'lsa ayt», «20% arzonlashsa ayt», «yana sotuvga chiqsa ayt» — fon rejimida tekshiriladi, spamga uch qavatli himoya |
 | 🔥 | **Kunlik top.** 11:00 / 16:00 / 21:00 da butun bo'lim skanerlanadi, eng yaxshi topilmalar `/top` da to'planadi |
+| 🧠 | **Narxni o'rganadi.** Bozorda solishtirishga e'lon topilmasa (e'lonlarning 77%), narxni **o'z ma'lumotimizda o'rgatilgan model** baholaydi — xatosi 21% (eski usulda 42%), va har bashorat tushuntiriladi |
 | ⚙️ | **Sozlanadi.** Tinch vaqt, holat (yangi/b/u), tartib (arzon/deal/yangi), qiziqishlar, ma'lumotlarni o'chirish |
 | 🎈 | **Yoqimli.** Reaksiyalar (👀 → 🔥/👍/🤔), tejash hisobi, «salom»/«rahmat» ga suhbat javobi |
 
@@ -218,6 +219,8 @@ flowchart LR
 | `xalyava/analyze.py` | Kredit/bo'lib to'lash, kopiya, nosoz, ulgurji filtrlari (inkorni tushunadi) |
 | `xalyava/match.py` | Tokenizatsiya, mahsulot moslashtirish, mahsulot kaliti |
 | `xalyava/sources.py` | OLX, Uzum, Asaxiy mijozlari (`curl_cffi`, brauzer taqlidi) |
+| `xalyava/price_model.py` | **Narx modeli** — o'z e'lonlarimizda o'rgatiladigan ridge regressiya; bozorda o'xshash e'lon bo'lmaganda etalon bo'ladi, har bashorat tushuntiriladi |
+| `xalyava/ml.py` | **Embedding qatlami** — lokal ONNX transformer (MiniLM int8); «Shunga o'xshash» va lug'at qazish uchun, asosiy reytingda ATAYLAB emas |
 | `xalyava/watch.py` | Kuzatuvlar, tinch vaqt, spamga qarshi uch qavat |
 | `xalyava/stt.py` | Ovoz → matn va transkriptni tuzatish (sonlar, akronimlar) |
 | `xalyava/ui.py` | Kartochkalar, menyular, sarlavha tozalash, barcha matnlar |
@@ -251,6 +254,81 @@ egallaydi. Guruhda faqat inline tugmalar va Telegram'ning «/» menyusi.
 
 ---
 
+## AI / ML qayerda ishlatilgan
+
+Uchta ML qatlami bor va **har biri o'lchov bilan** qo'shilgan: avval
+"qoidalar bilan qanday?" deb solishtirilgan, model faqat **yutgan joyda**
+qoldirilgan.
+
+| Qatlam | Nima | Turi |
+|---|---|---|
+| **Ovoz → matn** | ElevenLabs Scribe yoki Vosk/Kaldi (lokal) | neyron akustik model |
+| **Narx modeli** | ridge regressiya, **o'z ma'lumotimizda o'rgatiladi** | o'rgatilgan model |
+| **Embedding** | MiniLM (ONNX int8), lokal ishlaydi | 12 qatlamli transformer |
+| So'rovni tushunish, filtrlar, relevantlik | 147 tushunchali lug'at, regex, token qoidalari | **qoida** |
+
+### 1. O'z ma'lumotimizda o'rgatilgan narx modeli
+
+Eng ishonchli etalon — bozordagi o'xshash e'lonlar medianasi. Lekin real
+bazada e'lonlarning **77% uchun** 2 tadan kam o'xshash e'lon bor. Ilgari bot
+o'sha holatda "solishtirish uchun ma'lumot yetarli emas" derdi.
+
+Endi u bozorni **o'rganadi**: `log(narx) ≈ w·x` — brend, model raqami,
+xotira hajmi va holat belgilari bo'yicha. Real bazada 5-fold CV (MdAPE):
+
+| Usul | Hammasi | Kam peer (77%) |
+|---|---|---|
+| global mediana | 62% | — |
+| mahsulot medianasi (eski yo'l) | 42% | 66% |
+| **ridge model** | **21%** | **26%** |
+
+Ko'rilmagan mahsulotlarda ham (train'da o'sha mahsulot yo'q) model **22%**,
+mediana **62%** — ya'ni u mahsulotni yodlamaydi, brend/model/xotira narxga
+qanday ta'sir qilishini o'rganadi.
+
+**Nega ridge, neyron tarmoq emas:** ma'lumot kichik (~1200 e'lon), bashorat
+baho hisobiga sezilarli vaqt qo'shmasligi kerak (hozir 0.008 ms) va eng muhimi — **har bashorat tushuntirilishi shart**:
+`iPhone 15 Pro Max 256GB` uchun `15 +117%`, `pro +78%`, `iphone +50%`,
+`256GB +9%`. Tushuntirib bo'lmaydigan bahoga foydalanuvchi ishonmaydi.
+
+Model har bir necha soatda o'zini qayta o'rgatadi. Bo'lib to'lash, nosoz va
+kopiya e'lonlari o'quv to'plamiga **kiritilmaydi**, ustiga ikki bosqichli
+robust moslash — aks holda boshlang'ich to'lov narxlari butun shkalani pastga
+tortib ketardi.
+
+### 2. Embedding — bir joyda ishlatilgan, boshqasida ataylab rad etilgan
+
+Ko'p tilli transformer **lokal** ishlaydi (21 sarlavha ~27 ms) va
+**«Shunga o'xshash»** tugmasini quvvatlaydi: natijalar avval qoidalar bilan
+filtrlanadi, keyin embedding ular ichida ma'no yaqinligi bo'yicha tartiblaydi.
+
+Asosiy qidiruv reytingida **ataylab ishlatilmaydi** — bu ham o'lchangan:
+qoidalar 96–98%, xom embedding **75%**. E'lon sarlavhalari qisqa va shovqinli,
+o'zbekcha esa model uchun kam resursli til: muzlatgich so'roviga
+«Микроволновка Samsung» «Холодильник Samsung»dan yuqori chiqardi. So'rovni
+ruschaga o'girib berish battar qildi (38%). Bu yerda lug'at yutadi — demak
+lug'at qoladi.
+
+### 3. Model o'zi «ishonchim past» desa
+
+Akustik model har so'zga ishonch bahosini beradi. U chegaradan past bo'lsa bot
+taxmin qilmaydi, so'raydi: *«Shunday tushundim: «…» — shuni qidiraymi?»* —
+tasdiqlash, qayta aytish yoki yozib yuborish tugmalari bilan. Modelning ichki
+signali noto'g'ri javob emas, bitta savolga aylanadi.
+
+### 4. Model — qoidalarni yozishga yordamchi
+
+`bench/mine_concepts.py` embedding yordamida real sarlavhalardan lug'at
+bilmaydigan so'zlarni qazib oladi va dasturchiga **taklif** qiladi — «airwrap»
+(48 marta uchragan, lug'atda yo'q) shunday topildi. Qarorni odam qabul qiladi,
+ishlash paytidagi mantiq deterministik qolaveradi.
+
+> Har bir qatlam ixtiyoriy: model faylini o'chirsangiz yoki
+> `PRICE_MODEL_ENABLED=0` / `EMBED_ENABLED=0` qo'ysangiz, bot eski qoidaviy
+> yo'ldan ishlayveradi — buni testlar majburlaydi.
+
+---
+
 ## Narx bahosi qanday chiqadi
 
 Asosiy etalon — **bozordagi o'xshash e'lonlar medianasi**, yangi mahsulot narxi
@@ -259,7 +337,8 @@ emas. Sabab: ishlatilgan telefonni yangisining narxi bilan solishtirish soxta
 
 1. **Shu mahsulotning boshqa e'lonlari** (peer median) — eng ishonchli
 2. **Bizning narx tarixi** (`price_snapshots`) — vaqt ichida to'planadi
-3. **Uzum/Asaxiy yangi narxi** — eng zaif signal
+3. **O'rgatilgan narx modeli** — bozorda solishtirishga hech narsa bo'lmasa
+4. **Uzum/Asaxiy yangi narxi** — eng zaif signal
 
 Qoidalar:
 
@@ -283,12 +362,14 @@ Qoidalar:
 ./venv/bin/python bench/test_quality.py    #  184 sifat testi
 ./venv/bin/python bench/test_audit.py      #  102 audit regressiyasi
 ./venv/bin/python bench/test_semantic.py   #  171 semantik/ovoz/sozlama testi
+./venv/bin/python bench/test_ml.py         #   83 ML testi: model, embedding, ovoz
 ./venv/bin/python bench/test_search.py     #   34 real qidiruv holati (tarmoq)
 ```
 
-**1376 ta oflayn test** — tarmoqsiz, soniyalarda ishlaydi. Har o'zgarishdan
-keyin oltitasini ham ishlating. Jonli qidiruv sifati **97% dan tushmasligi**
-kerak (hozir 98%).
+**1459 ta oflayn test** — tarmoqsiz, soniyalarda ishlaydi. Har o'zgarishdan
+keyin yettitasini ham ishlating. Jonli qidiruv sifati alohida o'lchanadi
+(hozir 96% — ML qatlamlari o'chirilganda ham xuddi shu, ular reyting uchun
+emas, qamrov uchun qo'shilgan).
 
 <details>
 <summary><b>Har to'plam nimani qo'riqlaydi</b></summary>

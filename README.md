@@ -11,8 +11,8 @@ Semantic search in Uzbek · Russian · English  ·  voice input  ·  market-medi
 
 [![Python](https://img.shields.io/badge/Python-3.11%2B-3776AB?logo=python&logoColor=white)](https://www.python.org/)
 [![Telegram](https://img.shields.io/badge/live%20bot-%40xalyavauz__bot-26A5E4?logo=telegram&logoColor=white)](https://t.me/xalyavauz_bot)
-![Tests](https://img.shields.io/badge/tests-1376%20offline-2ea44f)
-![Latency](https://img.shields.io/badge/search-p50%20~950ms-blue)
+![Tests](https://img.shields.io/badge/tests-1459%20offline-2ea44f)
+![Latency](https://img.shields.io/badge/button%20tap-p50%20~0.1ms-blue)
 ![Dependencies](https://img.shields.io/badge/web%20framework-none-lightgrey)
 [![License](https://img.shields.io/badge/license-MIT-yellow)](LICENSE)
 
@@ -88,9 +88,10 @@ The parts that were genuinely hard, and what they cost to solve:
 | **Search misses half the market.** Users type Uzbek; listings are written in Russian. Online translation added 0.3–1.3 s per query and still failed on slang. | An **offline semantic layer** (`semantic.py`): 147 concepts across Uzbek/Russian/English + slang, brand aliases, spelling correction, Cyrillic→Latin, a concept hierarchy (`iphone ⊂ phone`) and conflict rules (`kolonka` the speaker ≠ `gas kolonka` the water heater). | Every query is expanded into the right language variants **with zero network calls**; live search quality **98%** on a 34-case benchmark. |
 | **Fake bargains.** Installment listings show the down payment as the price, so a 3.7 mln "iPhone 16 Pro" looked like a 61% discount. | Pattern detection for payment schedules, deposits and advances, plus **negation-aware** filters — `"singan emas"` (*not broken*) must not read as broken. | Installment and defect listings are excluded from both deal scoring and the peer median that other listings are judged against. |
 | **Anti-bot protection.** OLX (CloudFront) and Uzum (SmartCaptcha) drop plain HTTP clients. | `curl_cffi` with Chrome TLS fingerprint impersonation, against OLX's public JSON API rather than HTML scraping. | Stable scraping without a headless browser. |
-| **Buttons felt slow.** Every tap re-ran a search and re-hit the network. | Results are **pre-rendered into a session cache** at search time (`cb_ctx`, 20-min TTL); a callback only reads from SQLite. A test enforces *zero* outbound calls in callback paths. | Search **p50 ≈ 950 ms**, button tap **p50 ≈ 0.1 ms**. |
+| **Buttons felt slow.** Every tap re-ran a search and re-hit the network. | Results are **pre-rendered into a session cache** at search time (`cb_ctx`, 20-min TTL); a callback only reads from SQLite. A test enforces *zero* outbound calls in callback paths. | Button tap **p50 ≈ 0.1 ms** — instant. A full search stays network-bound (**p50 ≈ 2.3 s** on real traffic, of which the bot's own processing is a small fraction; OLX round-trips dominate). |
 | **Double taps produced double answers.** Telegram delivers every tap, and a second `answerCallbackQuery` is silently dropped — so the second reply vanished while the second *action* still ran. | A single-dispatch handler (`finally: ack()`) plus a claim registry (`claim_action`): heavy actions get a 3 s sliding window, editing actions 0.8 s. | One tap → one answer. 100 taps, or 8 parallel taps, still produce exactly one search and one reply — enforced by tests. |
 | **Uzbek speech has no off-the-shelf STT.** Spoken numbers (`bir yarim million`), ordinals (`o'n beshinchi ayfon`) and spelled-out brands (`el ji` = LG) all broke the query. | A transcript-repair layer on top of Vosk/ElevenLabs: a full Uzbek numeral parser, ordinal reordering, acronym assembly, and semantic spell-correction. | Voice and text share one pipeline; `o'n beshinchi ayfon pro maks` → `iPhone 15 Pro Max`. |
+| **No baseline for 77% of listings.** The most reliable reference is the median of similar live listings — but in the real database **77% of listings have fewer than two comparable offers**, leaving the bot with nothing to judge against. | A **ridge regression trained on our own data** (`price_model.py`): `log(price) ≈ w·x` over brand / model / storage / condition features, retrained every few hours as data accumulates, with installment and defect listings excluded from the training set. | Median absolute error **21%** vs **42%** for the previous per-product median — and on the sparse cases that motivated it, **26% vs 66%**. On products never seen in training (group k-fold): **22% vs 62%**. |
 | **A "50% off" label destroys trust if it is wrong.** | Price is compared against the **median of similar live listings** first, own price history second, retail price last — never retail alone. Honesty clamps forbid contradictory labels. | A listing above the market median can never be labelled "good price"; the 🔴 *suspicious* flag catches the rest. |
 
 ---
@@ -143,6 +144,8 @@ flowchart LR
 | `xalyava/analyze.py` | Installment/credit, replica, defect and wholesale filters (negation-aware) |
 | `xalyava/match.py` | Tokenisation, product matching, product keys |
 | `xalyava/sources.py` | OLX / Uzum / Asaxiy clients (`curl_cffi`, browser impersonation) |
+| `xalyava/price_model.py` | **Trained price model**: ridge regression on our own listings, used as the baseline when the market has no comparable offers; every prediction is explainable |
+| `xalyava/ml.py` | **Embedding layer**: local ONNX transformer (MiniLM int8) for semantic similarity — used for "similar listings" and dictionary mining, deliberately *not* for main ranking |
 | `xalyava/watch.py` | Price watches, quiet hours, three-layer anti-spam |
 | `xalyava/stt.py` | Speech→text and transcript repair (numerals, acronyms) |
 | `xalyava/ui.py` | Cards, menus, title cleaning, every user-facing string |
@@ -176,6 +179,83 @@ after transcription.
 
 ---
 
+## Where the AI/ML actually is
+
+Three ML layers, each added **only after it measurably beat the rule-based
+alternative** — and deliberately left out where it did not.
+
+| Layer | What | Type |
+|---|---|---|
+| **Speech → text** | ElevenLabs Scribe (API) or Vosk/Kaldi (local) | neural acoustic model |
+| **Price model** | ridge regression **trained on our own listings** | trained model |
+| **Embeddings** | `paraphrase-multilingual-MiniLM-L12-v2`, ONNX int8, runs locally | 12-layer transformer |
+| Query understanding, fraud filters, relevance | 147-concept dictionary, regex, token rules | **deterministic rules** |
+
+### 1. A price model trained on our own data
+
+The most reliable price baseline is the median of similar live listings — but
+**77% of listings have fewer than two comparable offers**. For those, the bot
+used to have nothing to compare against.
+
+So it learns the market instead: `log(price) ≈ w·x` over brand, model number,
+storage size and condition. Five-fold cross-validation on the real database:
+
+| Baseline | All listings | Sparse cases (77%) |
+|---|---|---|
+| global median | 62% | — |
+| per-product median (previous approach) | 42% | 66% |
+| **ridge model** | **21%** | **26%** |
+
+On products that never appear in training (group k-fold) the model still
+scores **22%** against the median's **62%** — it has learned how brand, model
+generation and storage move the price, not memorised individual products.
+
+**Why ridge and not a neural net:** ~1200 training rows (a deep model would
+overfit), a prediction budget measured in microseconds (it currently costs
+0.008 ms, inside a rating computed for every result), and — most importantly —
+**every prediction must be explainable**. `explain("iPhone 15 Pro Max 256GB")` returns
+`15 +117%`, `pro +78%`, `iphone +50%`, `256GB +9%`. A rating the user cannot
+interrogate is a rating they cannot trust.
+
+It retrains itself every few hours, so accuracy improves as data accumulates.
+Installment, defect and replica listings are excluded from training, and a
+two-pass robust fit drops the worst 3% of residuals — otherwise down-payment
+prices would drag the whole scale down.
+
+### 2. Embeddings — used in one place, refused in another
+
+A multilingual transformer runs locally (21 short titles in ~27 ms) and powers
+**"similar listings"**: results are filtered by rules first, then ordered by
+semantic closeness to the source listing.
+
+It is deliberately **not** used for main search ranking, because that was
+measured too: rules score 96–98%, raw embeddings **75%**. Marketplace titles
+are short and noisy and Uzbek is a low-resource language for the model —
+"Samsung microwave" outranked "Samsung fridge" for a fridge query. Translating
+the query to Russian first made it worse (38%). The dictionary wins here, so
+the dictionary stays.
+
+### 3. The model tells us when it is unsure
+
+The acoustic model returns a per-word confidence. Below a threshold the bot
+does not guess — it asks: *"I heard «…» — search for that?"* with buttons to
+confirm, re-record, or type instead. Model uncertainty surfaced as UX rather
+than as a wrong answer.
+
+### 4. ML as a tool for writing the rules
+
+`bench/mine_concepts.py` uses the embedding model offline to mine real listing
+titles for words the dictionary does not know, ranks them by semantic distance
+to existing concepts, and hands a **proposal list to the developer** — that's
+how `airwrap` (48 occurrences, missing from the dictionary) surfaced. A human
+decides; runtime behaviour stays deterministic.
+
+> Every layer is optional. Delete the model file, or set `PRICE_MODEL_ENABLED=0`
+> / `EMBED_ENABLED=0`, and the bot falls back to the rule-based path — enforced
+> by tests.
+
+---
+
 ## How the price rating comes out
 
 Every result carries one of four labels: 🔥 *great deal* · 🟢 *good price* ·
@@ -187,7 +267,8 @@ Baseline priority:
 
 1. **Other listings of the same product** (peer median) — most reliable
 2. **Our own price history** (`price_snapshots`) — accumulated over time
-3. **Uzum / Asaxiy retail price** — weakest signal
+3. **The trained price model** — when the market offers nothing to compare
+4. **Uzum / Asaxiy retail price** — weakest signal
 
 Guard rails:
 
@@ -209,11 +290,13 @@ Guard rails:
 ./venv/bin/python bench/test_quality.py    #  184  quality regressions
 ./venv/bin/python bench/test_audit.py      #  102  audit regressions
 ./venv/bin/python bench/test_semantic.py   #  171  semantic / voice / settings
+./venv/bin/python bench/test_ml.py         #   83  price model / embeddings / voice confidence
 ./venv/bin/python bench/test_search.py     #   34  live search cases (network)
 ```
 
-**1376 offline tests**, no network, seconds to run. Live search quality is held
-at **≥97%** (currently 98%).
+**1459 offline tests**, no network, seconds to run. Live search quality is
+measured separately against real OLX traffic (currently 96%, and identical
+with the ML layers switched off — they were added for coverage, not ranking).
 
 Every test guards a defect that actually happened — negation handling
 (*"not broken"* must not read as broken), product names surviving title
@@ -285,9 +368,9 @@ All configuration goes through `.env` — see [`.env.example`](.env.example).
 
 | | |
 |---|---|
-| **Stack** | Python 3.11+ · SQLite · `curl_cffi` · Vosk / ElevenLabs STT · Telegram Bot API · Docker |
-| **Size** | ~8 500 lines of application code across 15 modules, ~4 300 lines of tests |
-| **Performance** | Search p50 ≈ 950 ms · button tap p50 ≈ 0.1 ms |
+| **Stack** | Python 3.11+ · SQLite · NumPy · ONNX Runtime · `curl_cffi` · Vosk / ElevenLabs STT · Telegram Bot API · Docker |
+| **Size** | ~9 400 lines of application code across 17 modules, ~4 800 lines of tests |
+| **Performance** | Button tap p50 ≈ 0.1 ms (served from cache) · full search p50 ≈ 2.3 s on real traffic, dominated by OLX round-trips · price model prediction 0.008 ms |
 | **Interface** | Uzbek (bot UI), understands Uzbek / Russian / English input |
 | **Status** | Running in production for a private Telegram group since Aug 2026 |
 

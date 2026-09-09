@@ -15,6 +15,10 @@ sys.path.insert(0, ROOT)
 # testlar alohida DB'da ishlasin
 os.environ["DB_PATH"] = os.path.join(tempfile.mkdtemp(), "test.db")
 os.environ.setdefault("TELEGRAM_TOKEN", "test:token")
+# ML qatlamlari alohida to'plamda sinaladi (bench/test_ml.py) — bu yerda
+# qoidaviy yo'l tekshiriladi, shuning uchun o'chirib qo'yiladi.
+os.environ["PRICE_MODEL_ENABLED"] = "0"
+os.environ["EMBED_ENABLED"] = "0"
 
 from xalyava import db, deals, intent, ui, watch  # noqa: E402
 from xalyava.settings import settings  # noqa: E402

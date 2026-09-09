@@ -64,6 +64,8 @@ Pastdan yuqoriga (`tg.py` hech kimga bog'liq emas, `botd.py` hammasiga bog'liq):
 | `analyze.py` | Matn tahlili: kredit/kopiya/nosoz/telefon/sanoat/gadjet detektorlari, tarjima va translit. | — |
 | `sources.py` | Tashqi mijozlar: OLX API, Uzum GraphQL, Asaxiy HTML. | `perf` |
 | `semantic.py` | **Semantik qatlam.** 147 tushuncha (uz/ru/en/jargon), brend aliaslar, imlo tuzatish, kirill→lotin, ierarxiya (iphone ⊂ telefon), ziddiyat (kolonka ≠ gaz kolonka), variantlar (uz↔ru). Tarmoqsiz, deterministik. | `match` |
+| `ml.py` | **Embedding qatlami.** Lokal ONNX transformer (MiniLM, int8): matnlarni ma'no bo'yicha solishtiradi. Faqat «Shunga o'xshash» va lug'at qazishda — asosiy reytingda ATAYLAB emas (§7.2). Model fayli yo'q bo'lsa o'zi o'chadi. | — |
+| `price_model.py` | **Narx modeli.** O'z ma'lumotimizda o'rgatiladigan ridge regressiya: kam peer holatida baho etaloni (§7.1). Har bashorat `explain()` bilan tushuntiriladi. | `match`, `db` |
 | `intent.py` | Erkin matn → `SearchIntent` (narx chegarasi, «eng arzon», «skidka»…). Boshida **tushunish qatlami**: `stt.normalize_transcript` + `semantic.normalize` — matn ham, ovoz ham. | `search`, `semantic`, `stt` |
 | `search.py` | **Qidiruv dvigateli.** 3 bosqichli qidiruv, relevantlik qoidalari, fokus filtri. | `match`, `analyze`, `sources`, `deals` |
 | `deals.py` | **Deal Intelligence.** Narx bahosi, peer median, soxta chegirma detektori, dedupe. | `match`, `analyze`, `db` |
@@ -80,6 +82,7 @@ Pastdan yuqoriga (`tg.py` hech kimga bog'liq emas, `botd.py` hammasiga bog'liq):
 | `test_qa.py` | **721 QA senariysi** — buyruqlar, oqimlar, chegara holatlari, maxfiylik, xavfsizlik, bitta-ack, takror bosish, sozlamalar |
 | `test_quality.py` | **184 sifat testi** — matn, filtr, maxfiylik, ma'lumot butunligi |
 | `test_audit.py` | **102 audit regressiyasi** — ko'p agentli auditda tasdiqlangan nuqsonlar |
+| `test_ml.py` | **83 ML testi** — narx modeli (o'rgatish, bashorat, tushuntirish, buzuq fayl), embedding, ovoz ishonchi |
 | `test_semantic.py` | **171 semantik test** — sinonim/imlo/kirill/ovoz/tinch vaqt/fun/klaviaturalar |
 | `test_search.py` | **34 ta real qidiruv holati** (15 tasi semantik) — haqiqiy OLX'ga chiqadi, sifat 97% dan tushmasligi kerak |
 | `run_bench.py`, `gen_audio.py`, `results.json` | STT benchmark (bir marta ishlatilgan, tarixiy) |
@@ -215,7 +218,15 @@ menyusida ko'rinadi (`scope: chat`).
 2. **Tarjima parallel** — ilgari OLX so'rovidan oldin serial kutilardi.
 3. **Sessiya keshi** — callback'lar 0 ta tashqi so'rov qiladi.
 
-Natija: qidiruv **p50 ≈ 950 ms**, callback **p50 ≈ 0.1 ms** (bot tomonidagi ishlov).
+Natija: **callback p50 ≈ 0.1 ms** (tarmoqqa umuman chiqmaydi).
+
+To'liq qidiruv esa tarmoqqa bog'liq: real trafikda (`db.events`, n=54)
+**p50 ≈ 2.3 s**, p95 ≈ 5.4 s, eng tezi 0.6 s. Vaqtning katta qismi — OLX
+javobini kutish; bot tomonidagi ishlov (filtr, baho, render) undan ancha
+kichik. Narx modeli bashorati bunga 0.008 ms qo'shadi.
+
+> Ilgari bu yerda «p50 ≈ 950 ms» deb yozilgan edi — o'sha o'lchov sun'iy
+> sharoitda olingan. Jonli trafik raqami yuqoridagidek.
 
 ---
 
@@ -404,27 +415,147 @@ STT o'zbekcha texnik so'zlarni yomon taniydi. To'rt bosqich:
 
 ---
 
-## 7. «ML qayerda?» — halol javob
+## 7. AI / ML qatlamlari — nima ishlatilgan va NEGA
 
-**Loyihada o'qitilgan (trained) model yo'q.** Buni aniq bilib qo'ying, chunki
-kod «aqlli» ko'rinadi va bu chalg'itishi mumkin.
+Loyihada uchta ML qatlami bor. Ularning har biri **o'lchov bilan** qo'shilgan:
+avval "qoidalar bilan qanday?" deb solishtirilgan, model faqat **yutgan
+joyda** qoldirilgan. Yutmagan joyda — halol ravishda ishlatilmagan.
 
-| Nima | Turi | Qayerda |
+| Qatlam | Nima | Turi | Qayerda |
+|---|---|---|---|
+| **Ovoz → matn** | ElevenLabs Scribe (API) yoki Vosk/Kaldi (lokal) | neyron akustik model | `stt.py` |
+| **Narx modeli** | ridge regressiya, **o'z ma'lumotimizda o'rgatiladi** | o'rgatilgan model | `price_model.py` |
+| **Embedding** | `paraphrase-multilingual-MiniLM-L12-v2`, ONNX int8, lokal | 12 qatlamli transformer | `ml.py` |
+| Tarjima (zaxira) | Google Translate | tashqi servis | `analyze.py` |
+| Relevantlik | token qoidalari | **qoida** | `search.py::_relevant()` |
+| Ma'noni tushunish | 147 tushunchali lug'at | **qoida** | `semantic.py` |
+| Spam/kredit/kopiya | naqsh (regex) + inkor | **qoida** | `analyze.py` |
+
+### 7.1 Narx modeli — `price_model.py`
+
+**Muammo.** Baho etaloni sifatida eng ishonchlisi — bozordagi o'xshash
+e'lonlar medianasi. Lekin real bazada e'lonlarning **77% uchun** 2 tadan kam
+o'xshash e'lon topiladi. O'sha paytda bot amalda etalonsiz qolardi va
+"solishtirish uchun ma'lumot yetarli emas" deb javob berardi.
+
+**Yechim.** Sarlavha tokenlaridan narxni bashorat qiladigan ridge regressiya:
+
+```
+log(narx) ≈ w·x,   x = {brend, model, xotira hajmi, holat} belgilar vektori
+```
+
+**O'lchov** (5-fold CV, MdAPE — mediana nisbiy xato, real bazada):
+
+| Usul | Hammasi | Kam peer (77%) |
 |---|---|---|
-| **Ovoz → matn** | Tashqi ML model | ElevenLabs Scribe (API) yoki Vosk/Kaldi (lokal). Yagona haqiqiy ML. |
-| **Tarjima** | Tashqi servis | Google Translate (norasmiy endpoint) |
-| Relevantlik | **Qoida** (rule-based) | `search.py::_relevant()` — token qoidalari |
-| Deal bahosi | **Heuristika** | `deals.py::assess()` — qo'lda tanlangan ballar |
-| Mahsulot moslashtirish | **Heuristika** | `match.py::match_score()` — token overlap |
-| Spam/kredit/kopiya | **Regex** | `analyze.py` |
+| global mediana | 62% | — |
+| `product_key` medianasi (eski yo'l) | 42% | **66%** |
+| **ridge model** | **21%** | **26%** |
 
-Nega shunday: o'quv ma'lumoti yo'q (labelланган datasets yo'q), tezlik talabi
-qattiq (~1s), va qoidalar **tushuntirib beriladi** — foydalanuvchiga «nega bu
-🔴?» deb javob berish mumkin. Neyron tarmoq buni qila olmasdi.
+Ko'rilmagan mahsulotlar uchun (group k-fold — train'da o'sha mahsulot umuman
+yo'q): mediana 62%, **model 22%**. Ya'ni model mahsulotni yodlab olmaydi,
+balki *brend + model raqami + xotira narxga qanday ta'sir qiladi* — shuni
+o'rganadi.
 
-Agar keyinchalik ML qo'shmoqchi bo'lsangiz, eng mantiqiy joy —
-`deals.py::assess()` dagi ballar (`score += ...`). U yerda allaqachon
-`db.events` va `db.feedback` jadvallarida signal yig'ilyapti.
+**Nega ridge, neyron tarmoq emas:**
+
+1. Ma'lumot kichik (~1200 e'lon) — chuqur model bu yerda qayta o'rganib
+   (overfit) qolardi.
+2. Bashorat har bir natija uchun hisoblanadi — u yerda vaqt yo'q.
+   Hozirgi qiymat: **0.008 ms** (bitta matritsa ko'paytmasi).
+3. **Har bashorat tushuntiriladi.** `explain()` chaqirilsa:
+   `t:15 +117%`, `t:pro +78%`, `t:iphone +50%`, `mem:256 +9%` — qaysi so'z
+   narxni qancha ko'targani ko'rinadi. Neyron tarmoq buni bera olmasdi, baho
+   esa foydalanuvchiga **sabab bilan** ko'rsatilishi shart.
+
+**Qanday ulangan** (`deals.py::assess`) — etalon tanlash tartibi:
+
+```
+1. bozordagi o'xshash e'lonlar (≥2 ta)   →  "bozor"
+2. o'z narx tarixi (≥3 yozuv)            →  "tarix"
+3. bitta o'xshash e'lon                  →  "bozor"
+4. NARX MODELI (agar mahsulot tanish)    →  "model"   ← yangi
+5. do'kon narxi                          →  "yangi"
+```
+
+Himoya choralari: model bahosi **hech qachon "high" ishonch bermaydi**;
+halollik qoidalari (bozordan qimmat e'lon "yaxshi narx" bo'lolmaydi) modelga
+ham qo'llanadi; modeldan 60%+ arzon e'lon **shubhali** deb belgilanadi;
+mahsulot tokenlarining yarmidan kami tanish bo'lsa model umuman javob
+bermaydi (`MIN_COVERAGE`).
+
+**O'rgatish gigienasi:** bo'lib to'lash / nosoz / kopiya e'lonlari o'quv
+to'plamidan **chiqarib tashlanadi** (aks holda model boshlang'ich to'lovlarni
+narx deb o'rganib, butun baho tizimini pastga siljitardi), so'ng ikki
+bosqichli robust ridge: birinchi moslashdan keyin eng chetki 3% qoldiq
+tashlanib, model qayta o'rgatiladi.
+
+**O'zini yangilab turadi:** `housekeeping_loop` har 6 soatda `maybe_retrain()`
+chaqiradi — baza o'sgani sayin model aniqlashadi (`PRICE_MODEL_MAX_AGE_H`).
+
+### 7.2 Embedding qatlami — `ml.py`
+
+`paraphrase-multilingual-MiniLM-L12-v2`, ONNX int8, **lokal** ishlaydi
+(21 ta qisqa matn ~27 ms). Ishlatiladigan joyi bitta va u o'lchov bilan
+tanlangan:
+
+**✅ «Shunga o'xshash»** (`search.py::_rerank_like`). O'lchov: aynan mos
+keladigan e'lon bo'lganda qoida yaxshiroq (top-5 mos 1.00 vs 0.92), lekin
+aynan mosi **bo'lmaganda** qoida butunlay adashadi (0.00 — «Samsung S23
+Ultra» so'roviga iPhone qaytarardi), embedding esa eng yaqinini topadi
+(0.75). Shuning uchun natijalar avval qoidalar bilan filtrlanadi, keyin
+embedding ular ichida tartiblaydi.
+
+**❌ Asosiy qidiruv reytingi — ATAYLAB ishlatilmaydi.** O'lchandi:
+qoidalar 96–98%, xom embedding **75%**. Marketplace sarlavhalari qisqa va
+shovqinli, o'zbekcha esa model uchun kam resursli til — «Микроволновка
+Samsung» «Холодильник Samsung»dan yuqori chiqib qolardi. Ruscha variantga
+o'girib berish ham yordam bermadi (38%).
+
+**❌ "Balki shuni demoqchimisiz?" — ishlatilmaydi.** Yakka so'zlarda model
+zaif: «utyug» → «vr», «obogrevatel» → «svarka». 147 tushunchali lug'at bu
+ishni aniqroq bajaradi.
+
+Nozik joy: int8 kvantlangan model partiya tarkibiga qarab **±0.01 tebranadi**,
+shuning uchun tartiblashda o'xshashlik 0.1 lik "savat"ga yaxlitlanadi va bir
+savatdagilar orasida **arzoni** oldinda turadi.
+
+### 7.3 Ovoz ishonchi — `stt.py`
+
+Akustik model har so'zga o'z ishonch bahosini beradi (Vosk `conf`,
+ElevenLabs `logprob`). O'rtacha ishonch `STT_CONFIRM_BELOW` dan past bo'lsa
+bot **taxmin qilib qidirmaydi**, balki so'raydi:
+
+```
+🎙 Aniq eshitmadim.
+Shunday tushundim: «ayfon o'n beshinchi»
+Shuni qidiraymi?   [🔎 Ha, qidir] [🎤 Qayta aytaman] [⌨️ Yozib yuboraman]
+```
+
+Ya'ni modelning ichki signali UX'ga chiqariladi: noto'g'ri natija berish
+o'rniga bitta savol. Ishonch bermaydigan dvigatel ishlatilsa (yoki qiymat
+`None` bo'lsa) — bosqich o'zi o'chadi.
+
+### 7.4 Model — qoidalarni yozishga yordamchi (`bench/mine_concepts.py`)
+
+Embedding yana bir joyda ishlatiladi, lekin **ishlash paytida emas**: real
+e'lon sarlavhalaridan lug'at bilmaydigan so'zlar ajratiladi va mavjud
+tushunchalarga yaqinligi bo'yicha saralanib, **dasturchiga taklif** sifatida
+chiqariladi (masalan «airwrap» — 48 marta uchragan, lug'atda yo'q). Qarorni
+odam qabul qiladi; ishlash paytidagi mantiq deterministik qolaveradi
+(human-in-the-loop).
+
+### 7.5 Qoida: model faqat yutgan joyda qoladi
+
+Har bir qatlam qo'shilishidan oldin A/B o'lchangan. Masalan ML qo'shilgandan
+keyin jonli benchmark **96%** ko'rsatdi — xuddi shu paytda ML o'chirib
+o'lchanganda ham **96%** (98% dan tushish jonli e'lonlar matni o'zgargani
+sababli, kod emas). Ya'ni ML qidiruv sifatini buzmadi, lekin baho etaloni
+yo'q bo'lgan **77% holatni** yopdi.
+
+Barcha ML qatlamlari **ixtiyoriy**: model fayli yo'q bo'lsa yoki
+`PRICE_MODEL_ENABLED=0` / `EMBED_ENABLED=0` qo'yilsa, bot eski qoidaviy
+yo'ldan ishlayveradi. Testlar buni majburlaydi (`bench/test_ml.py`).
 
 ---
 

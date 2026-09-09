@@ -3,3 +3,5 @@ curl_cffi==0.16.2
 beautifulsoup4>=4.12
 lxml>=5.0
 vosk==0.3.44
+# Narx modeli (xalyava/price_model.py) uchun
+numpy>=1.26

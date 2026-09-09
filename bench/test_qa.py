@@ -14,6 +14,10 @@ sys.path.insert(0, ROOT)
 
 os.environ["DB_PATH"] = os.path.join(tempfile.mkdtemp(), "qa.db")
 os.environ.setdefault("TELEGRAM_TOKEN", "test:token")
+# ML qatlamlari alohida to'plamda sinaladi (bench/test_ml.py) — bu yerda
+# qoidaviy yo'l tekshiriladi, shuning uchun o'chirib qo'yiladi.
+os.environ["PRICE_MODEL_ENABLED"] = "0"
+os.environ["EMBED_ENABLED"] = "0"
 os.environ["ADMIN_IDS"] = "4242"
 
 import logging  # noqa: E402
@@ -449,7 +453,7 @@ def test_await_lifecycle():
     botd.run_pipeline = stub_pipeline()
     tg.download_file = lambda *a, **k: a[-1]
     orig_tr = stt.transcribe
-    stt.transcribe = lambda p: "iphone 15 pro kerak"
+    stt.transcribe = lambda p, **kw: "iphone 15 pro kerak"
     try:
         db._ex("DELETE FROM feedback WHERE user_id=?", (USER,))
 
@@ -839,7 +843,7 @@ def test_voice():
         v = {"file_id": "f1", "file_unique_id": "u1", "duration": 4}
 
         # a) shaxsiy chatda avtomatik
-        _stt.transcribe = lambda p: "menga iphone 15 pro kerak"
+        _stt.transcribe = lambda p, **kw: "menga iphone 15 pro kerak"
         reset()
         botd.handle_message({"chat": PRIV, "from": HUMAN, "message_id": 50,
                              "voice": v})
@@ -870,7 +874,7 @@ def test_voice():
               "editMessageText" in methods())
 
         # e) tushunarsiz ovoz
-        _stt.transcribe = lambda p: "ee mm aa"
+        _stt.transcribe = lambda p, **kw: "ee mm aa"
         reset()
         botd.handle_message({"chat": PRIV, "from": HUMAN, "message_id": 54,
                              "voice": v})
@@ -880,7 +884,7 @@ def test_voice():
         check("ovoz: misollar taklif qilinadi", "ex:0" in str(CALLS))
 
         # f) STT xatosi
-        def boom(p):
+        def boom(p, **kw):
             raise RuntimeError("stt o'ldi")
         _stt.transcribe = boom
         reset()

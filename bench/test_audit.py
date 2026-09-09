@@ -16,6 +16,10 @@ sys.path.insert(0, ROOT)
 
 os.environ["DB_PATH"] = os.path.join(tempfile.mkdtemp(), "a.db")
 os.environ.setdefault("TELEGRAM_TOKEN", "test:token")
+# ML qatlamlari alohida to'plamda sinaladi (bench/test_ml.py) — bu yerda
+# qoidaviy yo'l tekshiriladi, shuning uchun o'chirib qo'yiladi.
+os.environ["PRICE_MODEL_ENABLED"] = "0"
+os.environ["EMBED_ENABLED"] = "0"
 logging.disable(logging.ERROR)
 
 from xalyava import db, deals, intent as I, match as M  # noqa: E402
@@ -212,7 +216,7 @@ def test_voice_rate_limit():
     orig_dl, orig_tr = tg.download_file, stt.transcribe
     orig_pipe = botd.run_pipeline
     tg.download_file = lambda *a, **k: a[-1]
-    stt.transcribe = lambda p: "iphone 15 pro kerak"
+    stt.transcribe = lambda p, **kw: "iphone 15 pro kerak"
     botd.run_pipeline = lambda io, uid=None: []
     try:
         botd._busy.clear()

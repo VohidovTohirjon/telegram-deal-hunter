@@ -454,30 +454,45 @@ def _transcribe_elevenlabs(path):
                 headers={"xi-api-key": key}, multipart=mp, timeout=60)
     if r.status_code != 200:
         raise RuntimeError("ElevenLabs %s: %s" % (r.status_code, r.text[:150]))
-    return r.json().get("text", "")
+    data = r.json()
+    conf = None
+    words = [w for w in (data.get("words") or []) if isinstance(w, dict)]
+    lps = [w["logprob"] for w in words
+           if isinstance(w.get("logprob"), (int, float))]
+    if lps:
+        import math
+        conf = sum(math.exp(min(0.0, x)) for x in lps) / len(lps)
+    return data.get("text", ""), conf
 
 
-def transcribe(path):
-    """Audio fayl (oga/mp3/wav) → o'zbekcha matn (brendlar tuzatilgan)."""
+def transcribe(path, with_confidence=False):
+    """Audio fayl (oga/mp3/wav) → o'zbekcha matn (brendlar tuzatilgan).
+
+    with_confidence=True bo'lsa `(matn, ishonch)` qaytadi. Ishonch — akustik
+    modelning O'Z bahosi (Vosk so'z darajasidagi `conf`, ElevenLabs `logprob`),
+    0…1 oralig'ida yoki None (model bermasa). Bot uni past bo'lganda taxmin
+    qilmay, foydalanuvchidan tasdiq so'rash uchun ishlatadi.
+    """
     _load()
+    conf = None
     if _model_name.startswith("elevenlabs"):
         try:
-            return normalize_transcript(_transcribe_elevenlabs(path))
+            raw, conf = _transcribe_elevenlabs(path)
         except Exception as e:
             if not _model:
                 raise
             log.warning("ElevenLabs xato (%s) — vosk fallback", e)
-            raw = _transcribe_vosk(path)
-            return normalize_transcript(raw)
-    if _model_name.startswith("vosk:"):
-        raw = _transcribe_vosk(path)
+            raw, conf = _transcribe_vosk(path, want_conf=True)
+    elif _model_name.startswith("vosk:"):
+        raw, conf = _transcribe_vosk(path, want_conf=True)
     else:
         segs, _info = _model.transcribe(path, language="uz", beam_size=5)
         raw = " ".join(s.text for s in segs).strip()
-    return normalize_transcript(raw)
+    text = normalize_transcript(raw)
+    return (text, conf) if with_confidence else text
 
 
-def _transcribe_vosk(path):
+def _transcribe_vosk(path, want_conf=False):
     import wave
     from vosk import KaldiRecognizer
     wav = path + ".wav"
@@ -487,12 +502,19 @@ def _transcribe_vosk(path):
     try:
         wf = wave.open(wav, "rb")
         rec = KaldiRecognizer(_model, wf.getframerate())
+        rec.SetWords(True)          # so'z darajasidagi ishonch uchun
         while True:
             data = wf.readframes(4000)
             if not data:
                 break
             rec.AcceptWaveform(data)
-        return json.loads(rec.FinalResult()).get("text", "")
+        res = json.loads(rec.FinalResult())
+        text = res.get("text", "")
+        if not want_conf:
+            return text
+        confs = [w["conf"] for w in (res.get("result") or [])
+                 if isinstance(w.get("conf"), (int, float))]
+        return text, (sum(confs) / len(confs) if confs else None)
     finally:
         try:
             os.remove(wav)

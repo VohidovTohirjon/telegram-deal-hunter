@@ -75,7 +75,9 @@ class Assessment:
     confidence: str = "low"
     discount_pct: float = None        # asosiy etalonga nisbatan
     baseline: float = None            # solishtirilgan narx
-    baseline_kind: str = None         # "bozor" | "yangi" | "tarix"
+    baseline_kind: str = None         # "bozor" | "tarix" | "model" | "yangi"
+    model_confidence: str = None      # narx modeli ishlatilgan bo'lsa
+    model_coverage: float = None      # modelga tanish tokenlar ulushi
     ref_new: float = None             # Uzum/Asaxiy eng arzon yangi narxi
     peer_median: float = None
     peer_count: int = 0
@@ -96,6 +98,7 @@ class Assessment:
         return {"rating": self.rating, "score": self.score,
                 "confidence": self.confidence, "discount": self.discount_pct,
                 "baseline_kind": self.baseline_kind, "peers": self.peer_count,
+                "model_confidence": self.model_confidence,
                 "flags": self.flags}
 
 
@@ -205,8 +208,21 @@ def assess(item, pool=None, use_history=True):
         a.baseline, a.baseline_kind = a.hist_median, "tarix"
     elif a.peer_median:
         a.baseline, a.baseline_kind = a.peer_median, "bozor"
-    elif a.ref_new:
-        a.baseline, a.baseline_kind = a.ref_new, "yangi"
+    else:
+        # Bozorda o'xshash e'lon ham, tarix ham yo'q — e'lonlarning ~77% shu
+        # holatda. Shu yerda o'z ma'lumotimizda o'rgatilgan narx modeli
+        # ishlaydi (xalyava/price_model.py, MdAPE ~21% vs medianada ~63%).
+        pm = None
+        try:
+            from . import price_model
+            pm = price_model.predict(title, item.get("state") or o.get("state"))
+        except Exception as e:
+            log.debug("narx modeli ishlamadi: %s", e)
+        if pm:
+            a.baseline, a.baseline_kind = pm[0], "model"
+            a.model_confidence, a.model_coverage = pm[1], pm[2]
+        elif a.ref_new:
+            a.baseline, a.baseline_kind = a.ref_new, "yangi"
 
     if a.baseline:
         a.discount_pct = (a.baseline - price) / a.baseline * 100
@@ -218,6 +234,8 @@ def assess(item, pool=None, use_history=True):
         a.confidence = "high"
     elif a.peer_count >= 1 or refs or a.hist_count >= 2:
         a.confidence = "medium"
+    elif a.baseline_kind == "model" and a.model_confidence == "medium":
+        a.confidence = "medium"      # model tanish mahsulotni baholadi
     else:
         a.confidence = "low"
 
@@ -227,6 +245,9 @@ def assess(item, pool=None, use_history=True):
         d = a.discount_pct
         if a.baseline_kind in ("bozor", "tarix"):
             score += max(-20.0, min(38.0, d * 1.3))
+        elif a.baseline_kind == "model":
+            # bozor medianasidan zaifroq, yangi narxdan kuchliroq signal
+            score += max(-18.0, min(26.0, d * 0.9))
         else:  # yangi narxga nisbatan chegirma zaifroq signal
             score += max(-15.0, min(22.0, (d - 20) * 0.55))
 
@@ -293,6 +314,15 @@ def assess(item, pool=None, use_history=True):
         a.flags.append("bozordan_juda_arzon")
         a.reasons.append("bozor narxidan keskin past — sabab noma'lum")
         suspect = True
+    # model "bu mahsulot ancha qimmat" deydi — nosozlik yoki bo'lib to'lash
+    # narxi ehtimoli katta (bozor medianasidagi 50% qoidasining modeldagi mos
+    # keluvchisi, lekin ehtiyotkorroq chegara bilan)
+    if a.baseline_kind == "model" and a.discount_pct and a.discount_pct > 60:
+        score -= 25
+        a.flags.append("modeldan_juda_arzon")
+        a.reasons.append("taxminiy narxdan keskin past — sabab noma'lum")
+        suspect = True
+
     # faqat "yangi narx" bo'yicha ulkan chegirma — ishonchsiz
     if a.baseline_kind == "yangi" and a.discount_pct and a.discount_pct > 65:
         score -= 20
@@ -336,7 +366,7 @@ def assess(item, pool=None, use_history=True):
     # Yorliq narxga MOS kelishi shart. Ball ichida yangilik, sotuvchi va
     # jamoa fikri ham bor — ular bozordan QIMMAT e'lonni ham "🟢 Yaxshi narx"
     # darajasiga ko'tarib yuborardi. Bu foydalanuvchini chalg'itadi.
-    if a.baseline_kind in ("bozor", "tarix") and a.discount_pct is not None \
+    if a.baseline_kind in ("bozor", "tarix", "model") and a.discount_pct is not None \
             and a.rating in (RATING_FIRE, RATING_GOOD):
         if a.discount_pct < 2:
             a.rating = RATING_NORMAL      # bozor darajasida yoki qimmatroq
@@ -347,6 +377,9 @@ def assess(item, pool=None, use_history=True):
     if not a.reasons:
         if a.discount_pct and a.discount_pct >= 10 and a.baseline_kind == "bozor":
             a.reasons.append(f"o'xshash e'lonlardan {round(a.discount_pct)}% arzon")
+        elif a.discount_pct and a.discount_pct >= 12 and a.baseline_kind == "model":
+            a.reasons.append(
+                f"o'xshash mahsulotlar narxidan {round(a.discount_pct)}% arzon")
         elif a.discount_pct and a.discount_pct >= 10 and a.baseline_kind == "yangi":
             a.reasons.append(f"yangisidan {round(a.discount_pct)}% arzon")
         elif a.discount_pct is not None and a.discount_pct < -5:

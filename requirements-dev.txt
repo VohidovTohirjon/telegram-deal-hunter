@@ -2,3 +2,8 @@
 # Faqat benchmark va tadqiqot uchun (Docker образiga kirmaydi — og'ir)
 faster-whisper>=1.2
 edge-tts>=7.0
+# Embedding qatlami (xalyava/ml.py) — ixtiyoriy: bo'lmasa qatlam o'zi
+# o'chadi va bot qoidalar bilan ishlayveradi.
+# Model fayli: ./venv/bin/python -m xalyava.ml --download
+onnxruntime>=1.20
+tokenizers>=0.20

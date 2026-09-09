@@ -114,6 +114,23 @@ class Settings:
         # --- ovoz ---
         self.stt_model = _get("STT_MODEL", "vosk:vosk-model-small-uz-0.22",
                               str, "stt_model")
+        # Ovoz noaniq tanilganda tasdiq so'rash chegarasi (0 = hech qachon)
+        self.stt_confirm_below = _get("STT_CONFIRM_BELOW", 0.62, float)
+
+        # --- neyron embedding qatlami (ixtiyoriy, xalyava/ml.py) ---
+        # Model fayli bo'lmasa qatlam o'zi o'chadi va bot qoidalar bilan
+        # ishlayveradi — shuning uchun standart holat "yoqilgan".
+        self.embed_enabled = _get("EMBED_ENABLED", True, bool)
+        self.embed_model = _get("EMBED_MODEL", "minilm-uz")
+        self.embed_threads = _get("EMBED_THREADS", 2, int)
+        # Bir sotuvchining takror e'loni deb hisoblash chegarasi (kosinus)
+        self.embed_dupe_threshold = _get("EMBED_DUPE_THRESHOLD", 0.90, float)
+
+        # --- narx modeli (xalyava/price_model.py) ---
+        # Kam peer holatida etalon sifatida ishlatiladi; model fayli yo'q
+        # bo'lsa yoki so'rov modelga notanish bo'lsa — eski yo'l.
+        self.price_model_enabled = _get("PRICE_MODEL_ENABLED", True, bool)
+        self.price_model_max_age_h = _get("PRICE_MODEL_MAX_AGE_H", 24, int)
 
         # --- kuzatuvlar ---
         self.watch_interval_min = _get("WATCH_INTERVAL_MIN", 15, int)
