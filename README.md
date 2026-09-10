@@ -328,10 +328,14 @@ nothing leaves the machine. Policy and key-rotation guide: [SECURITY.md](SECURIT
 git clone https://github.com/VohidovTohirjon/telegram-deal-hunter.git
 cd telegram-deal-hunter
 cp .env.example .env        # add your TELEGRAM_TOKEN
+bash scripts/get-models.sh  # speech model (~50 MB), needed for voice search
 docker compose up -d
 ```
 
 One container runs everything: command daemon, digest schedule and watch loop.
+Text search works without any model; the download above is what makes voice
+messages work offline. The price model needs no download: it trains itself
+from your own data once a couple of hundred listings have accumulated.
 
 <details>
 <summary><b>Local (macOS / Linux) and launchd service</b></summary>

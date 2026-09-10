@@ -125,9 +125,14 @@ ko'rinadi (`setMyCommands`).
 git clone https://github.com/VohidovTohirjon/telegram-deal-hunter.git
 cd telegram-deal-hunter
 cp .env.example .env        # TELEGRAM_TOKEN ni to'ldiring
+bash scripts/get-models.sh  # ovoz modeli (~50 MB)
 docker compose up -d
 docker compose logs -f
 ```
+
+Matnli qidiruv modelsiz ham ishlaydi; yuqoridagi yuklab olish ovozli xabarlar
+uchun kerak. Narx modelini yuklab olish shart emas: baza to'lgach u o'zini
+o'zi o'rgatadi.
 
 Bitta konteyner hammasini bajaradi: buyruq demoni, digest jadvali va kuzatuv
 sikli. `cron` yoki `launchd` kerak emas; ma'lumot `xalyava-data` volume'ida.
